@@ -1,0 +1,6 @@
+﻿  main.cpp
+C:\Users\Dipto\source\repos\Game Programming project 2\main.cpp(57,17): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\Dipto\source\repos\Game Programming project 2\main.cpp(58,17): warning C4244: 'initializing': conversion from 'double' to 'float', possible loss of data
+C:\Users\Dipto\source\repos\Game Programming project 2\main.cpp(154,42): warning C4244: '+=': conversion from 'float' to 'int', possible loss of data
+C:\Users\Dipto\source\repos\Game Programming project 2\main.cpp(155,42): warning C4244: '+=': conversion from 'float' to 'int', possible loss of data
+  test.vcxproj -> C:\Users\Dipto\source\repos\Game Programming project 2\Debug\test.exe
