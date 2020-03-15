@@ -127,10 +127,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="entity.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="ShaderProgram.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="entity.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="ShaderProgram.h" />
   </ItemGroup>

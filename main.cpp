@@ -9,74 +9,140 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL.h>
 #include <SDL_opengl.h>
+#include <vector>
 #include "glm/mat4x4.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "ShaderProgram.h"
+#include "entity.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 SDL_Window* displayWindow;
 bool gameIsRunning = true;
 
-// Set the number of
-// previous ticks to be
-// 0 when the program
-// starts
-float prevTick = 0;
-float currTick;
-float numTicks;
+// represents the lander
+Entity* lander;
+// represents all the walls
+Entity* walls;
+
+// represents the chosen font
+GLuint font;
+
+// used to measure
+// and keep track
+// of time
+#define FIXED_TIMESTEP 0.0166666f
+float lastTicks = 0;
+float accumulator = 0.0f;
+
+// determines whether
+// the game ended and
+// if there was a win
+bool win = false;
+bool end = false;
 
 // Defines the shader used and the
 // matrixes used
 ShaderProgram program;
 glm::mat4 viewMatrix, modelMatrix, projectionMatrix;
 
-// renders the game
-SDL_Renderer* rend;
-
-// sets the sizes and starting positions
-// for the paddles and the ball
-SDL_Rect pad1 = {0, 0, 20, 100};
-SDL_Rect pad2 = {620, 0, 20, 100};
-SDL_Rect ball = {320, 240, 20, 20};
-
-// Determines the directions
-// that the ball goes
-int xDirection = 1;
-int yDirection = 1;
-
-// Determines whether or
-// not the game has started
-bool start = false;
-
-// exits the game
+// closes the game
 void Shutdown() {
     SDL_Quit();
 }
 
-// returns whether there was a collision
-bool getCollision(SDL_Rect rect1, SDL_Rect rect2) {
-    float xDist = fabs(rect2.x - rect1.x) - ((rect2.w + rect1.w) / 2.0f);
-    float yDist = fabs(rect2.y - rect1.y) - ((rect2.h + rect1.h) / 2.0f);
-    return xDist < 0 && yDist < 0;
+// Loads the texture from the location given
+GLuint loadTexture(const char* name) {
+    // downloads the images into the chars
+    int w, h, n;
+    unsigned char* pic = stbi_load(name, &w, &h, &n, STBI_rgb_alpha);
+
+    // stops running if the image couldn't be found
+    if (pic == NULL) {
+        std::cout << "The picture is not in the same file\n";
+        Shutdown();
+    }
+
+    
+    // Gives an id to the image and binds it
+    // to a texture
+    GLuint id;
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pic);
+
+    // Magnifies or shrinks the texture as needed and
+    // does so with a focus on high resolution
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // frees the image from the RAM
+    stbi_image_free(pic);
+
+    // Returns the id of the texture
+    return id;
 }
 
-// Draws the respective rectangle
-// in red
-void draw(SDL_Rect rect) {
-    SDL_SetRenderDrawColor(rend, 255, 0, 0, 255);
-    SDL_RenderFillRect(rend, &rect);
-    SDL_RenderPresent(rend);
+// writes text to the screen
+void DrawText(ShaderProgram* program, GLuint fontTextureID, std::string text,
+    float size, float spacing, glm::vec3 position)
+{
+    float width = 1.0f / 16.0f;
+    float height = 1.0f / 16.0f;
+
+    std::vector<float> vertices;
+    std::vector<float> texCoords;
+
+    for (int i = 0; i < text.size(); i++) {
+
+        int index = (int)text[i];
+        float offset = (size + spacing) * i;
+        float u = (float)(index % 16) / 16.0f;
+        float v = (float)(index / 16) / 16.0f;
+        vertices.insert(vertices.end(), {
+            offset + (-0.5f * size), 0.5f * size,
+            offset + (-0.5f * size), -0.5f * size,
+            offset + (0.5f * size), 0.5f * size,
+            offset + (0.5f * size), -0.5f * size,
+            offset + (0.5f * size), 0.5f * size,
+            offset + (-0.5f * size), -0.5f * size,
+            });
+        texCoords.insert(texCoords.end(), {
+        u, v,
+        u, v + height,
+        u + width, v,
+        u + width, v + height,
+        u + width, v,
+        u, v + height,
+            });
+    }
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    modelMatrix = glm::translate(modelMatrix, position);
+    program->SetModelMatrix(modelMatrix);
+
+    glUseProgram(program->programID);
+
+    glVertexAttribPointer(program->positionAttribute, 2, GL_FLOAT, false, 0, vertices.data());
+    glEnableVertexAttribArray(program->positionAttribute);
+
+    glVertexAttribPointer(program->texCoordAttribute, 2, GL_FLOAT, false, 0, texCoords.data());
+    glEnableVertexAttribArray(program->texCoordAttribute);
+
+    glBindTexture(GL_TEXTURE_2D, fontTextureID);
+    glDrawArrays(GL_TRIANGLES, 0, (int)(text.size() * 6));
+
+    glDisableVertexAttribArray(program->positionAttribute);
+    glDisableVertexAttribArray(program->texCoordAttribute);
 }
 
-// Initialized the components
-// of the game
+// Initialize what is necessary for the lunar lander scene
 void Initialize() {
     // creates the window
     SDL_Init(SDL_INIT_VIDEO);
-    displayWindow = SDL_CreateWindow("Project 1", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_OPENGL);
+    displayWindow = SDL_CreateWindow("Lunar Lander", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_OPENGL);
     SDL_GLContext context = SDL_GL_CreateContext(displayWindow);
     SDL_GL_MakeCurrent(displayWindow, context);
-    // creates the rendere
-    rend = SDL_CreateRenderer(displayWindow, -1, SDL_RENDERER_ACCELERATED);
 
 #ifdef _WINDOWS
     glewInit();
@@ -84,8 +150,8 @@ void Initialize() {
 
     glViewport(0, 0, 640, 480);
 
-    // loads the shaders
-    program.Load("shaders/vertex.glsl", "shaders/fragment.glsl");
+    // loads the appropiate shaders
+    program.Load("shaders/vertex_textured.glsl", "shaders/fragment_textured.glsl");
 
     // sets the various matrixes
     viewMatrix = glm::mat4(1.0f);
@@ -96,116 +162,163 @@ void Initialize() {
 
     glUseProgram(program.programID);
 
-    // draws the initial state
-    // of the games
-    draw(pad1);
-    draw(pad2);
-    draw(ball);
+    // sets up the lander
+    lander = new Entity();
+    lander->accel = glm::vec3(0.0f, -0.1f, 0.0f);
+    lander->textureID = loadTexture("platformChar_happy.png");
+    lander->position = glm::vec3(0.0f, 4.0f, 0.0f);
+
+    // sets up the textures for the walls
+    walls = new Entity[26];
+    GLuint texWall = loadTexture("platformPack_tile007.png");
+    for (int i = 0; i < 26; i++) {
+        walls[i].textureID = texWall;
+    }
+
+    // the goal gets a different texture
+    walls[23].textureID = loadTexture("platformPack_tile008.png");
+
+    // generate left walls
+    float start = -2.75;
+    for (int i = 0; i < 8; i++) {
+        walls[i].position = glm::vec3(-5.0f, start, 0.0f);
+        start += .9375;
+    }
+
+    //generate right walls
+   start = -2.75;
+    for (int i = 8; i < 16; i++) {
+        walls[i].position = glm::vec3(5.0f, start, 0.0f);
+        start += .9375;
+    }
+
+    // generate floor walls
+    start = -5.0f;
+    for (int i = 16; i < 24; i++) {
+        walls[i].position = glm::vec3(1 + start, -3.75f, 0.0f);
+        start += 1.0f;
+    }
+
+    // adds a wall obstacle to the middle of the screen
+    walls[24].textureID = texWall;
+    walls[24].position = glm::vec3(0.0f, 0.0f, 0.0f);
+
+    // sets up the other half of the goal
+    walls[25].textureID = loadTexture("platformPack_tile008.png");
+    walls[25].position = glm::vec3(4.0f, -3.75f, 0.0f);
+
+    // initialize all the walls
+    for (int i = 0; i < 26; i++)
+        walls[i].Update(0);
+    // Allows blending so that the objects
+    // don't look out of place
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
-
+// allows input to be understood
 void ProcessInput() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        // Stops the game and program completely
+        // Stops the scene and program completely
         // when the window is closed
         if (event.type == SDL_QUIT || event.type == SDL_WINDOWEVENT_CLOSE) {
             gameIsRunning = false;
         }
-        // moves one paddle up and down
-        // with the up and down key and
-        // moves the other paddle up and down
-        // with the w and s key
-        // starts the game by pressing
-        // the space key
-        else if (event.type == SDL_KEYDOWN) {
+        // acceleration to the left and right happens
+        // when the key is releaed and only if the
+        // game has not ended
+        else if (event.type == SDL_KEYUP && !end) {
             switch (event.key.keysym.sym) {
-            case SDLK_UP:
-                if (pad2.y > 0 && start)
-                    pad2.y -= 40;
+            case SDLK_LEFT:
+                lander->accel.x -= .1;
                 break;
-            case SDLK_DOWN:
-                if (pad2.y < 380 && start)
-                    pad2.y += 40;
-                break;
-            case SDLK_w:
-                if (pad1.y > 0 && start)
-                    pad1.y -= 40;
-                break;
-            case SDLK_s:
-                if (pad1.y < 380 && start)
-                    pad1.y += 40;
-                break;
-            case SDLK_SPACE:
-                start = true;
+            case SDLK_RIGHT:
+                lander->accel.x += .1;
                 break;
             }
         }
     }
 }
 
-
-
-// Makes changes to the game each frame
+// Makes changes to the scene each frame
+// at a consistent rate of time
+// The only change that is made 
+// is to the movement of the lander
 void Update() {
+    float ticks = (float)SDL_GetTicks() / 1000.0f;
+    float deltaTime = ticks - lastTicks;
+    lastTicks = ticks;
 
-    // moves the ball
-    ball.x += 200 * numTicks * xDirection;
-    ball.y += 200 * numTicks * yDirection;
-    // ends the game if the ball makes it past either paddle
-    if (ball.x >= 620 || ball.x <= 0)
-        start = false;
-    // changes the ball's direction
-    // if the top or bottom
-    // wall is hit
-    else if (ball.y >= 460 || ball.y <= 0)
-        yDirection *= -1;
-    // changes the ball's direction if
-    // it collides with a paddle
-    if (getCollision(pad1, ball) || getCollision(pad2, ball))
-        xDirection *= -1;
+    deltaTime += accumulator;
+    if (deltaTime < FIXED_TIMESTEP) {
+        accumulator = deltaTime;
+        return;
+    }
+
+    while (deltaTime >= FIXED_TIMESTEP) {
+        
+        lander->Update(FIXED_TIMESTEP);
+
+        deltaTime -= FIXED_TIMESTEP;
+    }
+
+    accumulator = deltaTime;
+
 }
 
-// renders the game
+// Renders the walls, the goal area,
+// and the lunar lander
 void Render() {
-    // inserts a small delay before each drawing
-    // so that so many drawings cosecutively 
-    // does not cause an issue where the screen freezes
-    SDL_Delay(5);
-    // Deletes the previous screen
-    SDL_SetRenderDrawColor(rend, 0, 0, 0, 255);
-    SDL_RenderClear(rend);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    program.SetModelMatrix(modelMatrix);
+    for (int i = 0; i < 26; i++)
+        walls[i].Render(&program);
 
-    // Draws the new updated screen
-    draw(pad1);
-    draw(pad2);
-    draw(ball);
+
+    lander->Render(&program);
 
     SDL_GL_SwapWindow(displayWindow);
 }
 
+// Runs the game until it ends
 int main(int argc, char* argv[]) {
     Initialize();
-
+    // The game advances until the lunar
+    // lander lands and the game ends
     while (gameIsRunning) {
-        // Gets the fraction of a second it took
-        // for the current frame to happen
-        currTick = (float)SDL_GetTicks() / 1000.0f;
-        numTicks = currTick - prevTick;
-        prevTick = currTick;
-        ProcessInput();
-        // waits to starts the game until
-        // space is pressed
-        if (start) {
+        if (!end) {
+            ProcessInput();
             Update();
             Render();
+            for (int i = 0; i < 26; i++)
+                // stops the game once a collision occurs
+                if (lander->getCollision(&walls[i])) {
+                    end = true;
+                    // The game is won if the collision was
+                    // with the goal area
+                    if (i == 23 || i == 25)
+                        win = true;
+                    // loads the font and displays
+                    // whether the game was won
+                    // or lost
+                    font = loadTexture("font1.png");
+                    if (win)
+                        DrawText(&program, font, "Mission Successful", 0.5f, -0.25f, glm::vec3(-4.75f, 3.3f, 0.0f));
+                    else
+                        DrawText(&program, font, "Mission Failed", 0.5f, -0.25f, glm::vec3(-4.75f, 3.3f, 0.0f));
+                    SDL_GL_SwapWindow(displayWindow);
+                    break;
+                }
+        }
+        else {
+            // Is here so that the window can still be closed
+            ProcessInput();
         }
     }
-
-    // turns off the game once its done
+    // exits the game
     Shutdown();
     return 0;
 }
