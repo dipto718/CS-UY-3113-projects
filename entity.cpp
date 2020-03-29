@@ -9,17 +9,38 @@ Entity::Entity()
 // how much acceleration it has
 void Entity::Update(float time)
 {
-    // gets the velocity
-    velocity += accel * time;
-    // gets the position that results from the velocity
-    position += velocity * time;
-    // Sets the model matrix and moves the Entity
-    modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::translate(modelMatrix, position);
+    if (!isActive)
+        return;
+    // moves normally if it hasn't 
+    // collided with a wall
+    if (!blocked) {
+        // gets the velocity
+        velocity += accel * time;
+        // gets the position that results from the velocity
+        position += velocity * time;
+        // Sets the model matrix and moves the Entity
+        modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::translate(modelMatrix, position);
+    }
+    // bouces if it collided with a wall
+    else {
+        blocked = false;
+        // gets the velocity
+        velocity += accel * time;
+        velocity *= -1;
+        accel *= 0;
+        // gets the position that results from the velocity
+        position += velocity * time;
+        // Sets the model matrix and moves the Entity
+        modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::translate(modelMatrix, position);
+    }
 }
 
 // Creates the textured object
 void Entity::Render(ShaderProgram* program) {
+    if (!isActive)
+        return;
     // sets the model matrix
     program->SetModelMatrix(modelMatrix);
 
@@ -48,6 +69,8 @@ void Entity::Render(ShaderProgram* program) {
 
 // returns whether a collision happened between the two entities
 bool Entity::getCollision(Entity* object) {
+    if (!isActive || !(object->isActive))
+        return false;
     float xDist = fabs(position.x - object->position.x) - ((w + object->w) / 2.0f);
     float yDist = fabs(position.y - object->position.y) - ((h + object->h) / 2.0f);
     return xDist < 0 && yDist < 0;

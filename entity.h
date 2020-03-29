@@ -21,11 +21,13 @@ public:
     glm::vec3 accel = glm::vec3(0);
     float w = 1.0f;
     float h = 1.0f;
+    bool isActive = true;
+    bool blocked = false;
 
     GLuint textureID;
 
     glm::mat4 modelMatrix;
-
+    
     Entity();
 
     void Update(float time);
