@@ -49,3 +49,5 @@
 # and how the slowing tile can be an obstacle as well
 # if there is not enough velocity when it is reached
 # Winning this final level results in a win
+An image of the win screen is on the github repository as well
+to show that the third level is still winnable despite how hard it may seem
